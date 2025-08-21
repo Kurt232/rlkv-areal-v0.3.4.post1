@@ -1,6 +1,5 @@
 experiment_name: gsm8k-grpo
 trial_name: trial0
-
 seed: 1
 total_train_epochs: 10
 tokenizer_path: ${actor.path}
@@ -19,7 +18,7 @@ allocation_mode: sglang.d4p1t1+d4p1t1
 rollout:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  max_concurrent_rollouts: 256
+  max_concurrent_rollouts: 64
   queue_size: null
   consumer_batch_size: ${train_dataset.batch_size}
   max_head_offpolicyness: 2
@@ -58,7 +57,7 @@ actor:
   temperature: ${gconfig.temperature}
   reward_scaling: 10.0
   reward_bias: -0.5
-  kl_ctl: 0.0
+  kl_ctl: 0.0 # disable ref
   ppo_n_minibatches: 1
   recompute_logprob: true
   use_decoupled_loss: true
@@ -97,7 +96,7 @@ sglang:
 
 # datasets
 train_dataset:
-  batch_size: 256
+  batch_size: 64
   shuffle: true
   pin_memory: true
   num_workers: 4
@@ -106,7 +105,7 @@ train_dataset:
   max_length: 1024
 
 valid_dataset:
-  batch_size: 256
+  batch_size: 64
   shuffle: true
   pin_memory: true
   num_workers: 4
@@ -144,7 +143,7 @@ stats_logger:
   trial_name: ${trial_name}
   fileroot: ${cluster.fileroot}
   wandb:
-    mode: disabled
+    mode: online
 
 launcher:
   inference_server_cpus_per_gpu: 4

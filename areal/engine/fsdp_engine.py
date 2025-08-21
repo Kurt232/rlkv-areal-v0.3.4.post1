@@ -35,6 +35,17 @@ from areal.utils.data import (
     reorder_list,
     unpack_sequence,
 )
+from areal.mixed_attn.loss import reg_loss_fn
+from areal.mixed_attn.utils import get_adapter_weight
+from areal.utils.distributed import init_custom_process_group
+from areal.utils.fsdp import (
+    CPUOffloadPolicy,
+    MixedPrecisionPolicy,
+    apply_fsdp2,
+    create_fsdp_device_mesh,
+    fsdp2_clip_grad_norm_,
+    fsdp2_load_full_state_dict,
+)
 from areal.utils.distributed import init_custom_process_group
 from areal.utils.fsdp import fsdp2_load_full_state_dict
 from areal.utils.fsdp.grad import fsdp2_clip_grad_norm
@@ -45,6 +56,14 @@ from areal.utils.ulysses import (
     ulysses_pad,
     ulysses_pad_and_slice_inputs,
     ulysses_prepare_inputs,
+)
+
+from areal.mixed_attn import (
+    clamp_adapter_weight,
+    enable_mixed_attention_training,
+    get_adapter_weight,
+    load_adapter_weight,
+    save_adapter_weight,
 )
 
 
@@ -123,6 +142,7 @@ class FSDPEngine(BaseHFEngine):
         self.dp_rank = dist.get_rank(self.dp_group)
 
         self.logger.info(f"Data parallel head {self.dp_head} and rank {self.dp_rank}")
+        self.enable_mixed_attn_training = self.config.enable_mixed_attn_training
 
     def initialize(self, addr: str | None, ft_spec: FinetuneSpec | None):
         # Initialize distributed enviroments and load model.
@@ -140,6 +160,18 @@ class FSDPEngine(BaseHFEngine):
             model=self.model,
             ulysses_sp_size=self.parallel_helper.sp_size,
         )
+
+        if self.enable_mixed_attn_training:
+            enable_mixed_attention_training(
+                self.model, self.config.sink_window_size, self.config.recent_window_size
+            )
+
+            for name, param in self.model.named_parameters():
+                if "adapter" in name:
+                    param.requires_grad = True
+                    logger.info(f"Training adapter weight: {name}")
+                else:
+                    param.requires_grad = False
 
         if self.config.use_lora:
             self._apply_peft_wrapper()
@@ -223,20 +255,34 @@ class FSDPEngine(BaseHFEngine):
 
         # save huggingface model on rank 0
         if dist.get_rank() == 0:
-            os.makedirs(path, exist_ok=True)
-            self.model.save_pretrained(path, state_dict=state_dict)
-            self.model_config.save_pretrained(path)
-            if tokenizer is not None:
-                tokenizer.save_pretrained(path)
-            if processor is not None:
-                processor.save_pretrained(path)
+            # add by Wenjie
+            if self.enable_mixed_attn_training:
+                save_adapter_weight(self.model.config._name_or_path, state_dict, path)
+            else:
+                os.makedirs(path, exist_ok=True)
+                self.model.save_pretrained(path, state_dict=state_dict)
+                self.model_config.save_pretrained(path)
+                if tokenizer is not None:
+                    tokenizer.save_pretrained(path)
+                if processor is not None:
+                    processor.save_pretrained(path)
 
         dist.barrier(device_ids=[self.device.index])
 
     def _load_model_from_hf(self, path: str):
         """Load model from HuggingFace format."""
         if dist.get_rank() == 0:
-            full_state = get_state_dict_from_repo_id_or_path(path)
+            # add by Wenjie
+            if self.enable_mixed_attn_training:
+                model_name, adapter_weight_dict = load_adapter_weight(path)
+                if model_name != self.model.config._name_or_path:
+                    raise ValueError(
+                        f"Model name mismatch: {model_name} vs {self.model.config._name_or_path}"
+                    )
+                full_state = get_state_dict_from_repo_id_or_path(model_name)
+                full_state.update(adapter_weight_dict)
+            else:
+                full_state = get_state_dict_from_repo_id_or_path(path)
         else:
             full_state = {}
 
@@ -352,6 +398,10 @@ class FSDPEngine(BaseHFEngine):
     ) -> List[List[ParamSpec]]:
         param_specs = []
         for name, param in self.get_model_name_parameters():
+            # add by Wenjie
+            if self.enable_mixed_attn_training and "adapter" not in name:
+                # only collect adapter weights
+                continue
             if isinstance(param.data, DTensor):
                 tensor = param.data.full_tensor()
             else:
@@ -401,6 +451,10 @@ class FSDPEngine(BaseHFEngine):
         for pad_length, padded_mb_input, mb_input in zip(
             mb_list.padding_lengths, mb_list.padded_mbs, mb_list.mbs
         ):
+            if self.enable_mixed_attn_training:
+                # Reset adapter weights for each microbatch
+                clamp_adapter_weight(self.model, 0, 1)
+
             if self.parallel_helper.sp_size > 1:
                 input_ids = padded_mb_input["input_ids"]
                 position_ids = padded_mb_input.get("position_ids", None)
@@ -455,6 +509,17 @@ class FSDPEngine(BaseHFEngine):
             loss_scale *= self.parallel_helper.dp_size
 
             loss *= loss_scale
+
+            # add by Wenjie
+            if self.enable_mixed_attn_training:
+                adapter_weight_list = get_adapter_weight(self.model)
+                adapter_weight = [
+                    h.full_tensor().to(logits.device) for h in adapter_weight_list
+                ]
+                reg_loss = reg_loss_fn(torch.cat(adapter_weight)).float()
+
+                loss += self.config.reg_loss_scale * reg_loss
+
             loss.backward()
 
         grad_norm = fsdp2_clip_grad_norm(

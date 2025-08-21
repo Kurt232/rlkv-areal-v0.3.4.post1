@@ -531,6 +531,24 @@ class vLLMConfig:
                 flags.append(f"--{k.replace('_','-')} {v}")
         return f"python3 -m areal.thirdparty.vllm.areal_vllm_server {' '.join(flags)}"
 
+    # Mixed Attention
+    # add by Wenjie
+    enable_mixed_attn_training: bool = field(
+        default=False,
+        metadata={"help": "Enable mixed attention training."},
+    )
+    sink_window_size: int = field(
+        default=16,
+        metadata={"help": "Sink size for streaming attention."},
+    )
+    recent_window_size: int = field(
+        default=64,
+        metadata={"help": "Recent size for streaming attention."},
+    )
+    reg_loss_scale: float = field(
+        default=0.3, metadata={"help": "Weight for sparse regularization loss"}
+    )
+
 
 @dataclass
 class SGLangConfig:
@@ -598,6 +616,11 @@ class SGLangConfig:
     # The interval (in decoding iterations) to log throughput
     # and update prometheus metrics
     decode_log_interval: int = 1
+    # add by Wenjie
+    enable_mixed_attention: bool = False
+    sink_window_size: int = 16
+    recent_window_size: int = 32
+    adapter_load_path: Optional[str] = None
 
     # Use staticmethod to make OmegaConf happy.
     @staticmethod
