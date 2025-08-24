@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import types
 from typing import Optional
 
@@ -24,6 +23,57 @@ from realhf.base import logging
 logger = logging.getLogger("Mixed Attention")
 
 
+def enable_mixed_attention_training(
+    model,
+    forward_fn,
+    sink_window_size: int,
+    recent_window_size: int,
+    adapter_init_value: float = 1.0,
+):
+    # areal don't support TP
+    device = next(model.parameters()).device
+    dtype = next(model.parameters()).dtype
+
+    num_sink_blocks = (sink_window_size + 127) // 128
+    num_recent_blocks = (recent_window_size + 127) // 128
+    num_heads = model.config.num_attention_heads
+    num_kv_heads = model.config.num_key_value_heads
+
+    logger.info(
+        f"Using blocksparse implementation with {num_sink_blocks} sink blocks, {num_recent_blocks} recent blocks, and {num_heads} heads per device"
+    )
+    streaming_mask = torch.tensor(
+        [num_sink_blocks, num_recent_blocks] * num_heads,
+        device=device,
+        dtype=torch.int32,
+    )
+
+    for layer in model.model.layers:
+        module = layer.self_attn
+        module.forward = types.MethodType(forward_fn, module)
+        if "adapter" not in module._parameters:
+            # Original
+            module.register_parameter(
+                "adapter",
+                nn.Parameter(
+                    torch.ones(
+                        num_kv_heads,
+                        device=device,
+                        dtype=dtype,
+                        requires_grad=True,
+                    )
+                    * adapter_init_value
+                ),
+            )
+        # else: means the adapter is already registered, e.g. middle checkpoint of training
+
+        module.register_buffer("streaming_mask", streaming_mask)
+        module.register_buffer(
+            "head_mask_type",
+            torch.tensor([-1] * num_heads, device=device, dtype=torch.int32),
+        )
+
+
 def llama_mixed_attention_forward(
     self,
     hidden_states: torch.Tensor,
@@ -38,13 +88,9 @@ def llama_mixed_attention_forward(
     past_key_value: Optional[Cache] = None,
     cache_position: Optional[torch.LongTensor] = None,
     **kwargs,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
     input_shape = hidden_states.shape[:-1]
-    hidden_shape = (
-        *input_shape,
-        -1,
-        self.head_dim,
-    )  # [bsz, seqlen, num_heads, head_dim]
+    hidden_shape = (*input_shape, -1, self.head_dim)
 
     query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
     key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
@@ -93,12 +139,14 @@ def llama_mixed_attention_forward(
         is_causal=True,
     )
 
-    adapter = self.adapter.repeat_interleave(self.num_key_value_groups).view(1, -1, 1)
+    # adapter shape: [num_heads] -> [1, num_heads, 1]
+    adapter = self.adapter.repeat_interleave(self.num_key_value_groups)
+    adapter = adapter.view(1, -1, 1)
 
     attn_output = adapter * attn_output + (1.0 - adapter) * streaming_attn_output
     attn_output = attn_output.reshape(*input_shape, -1).contiguous()
-
     attn_output = self.o_proj(attn_output)
+
     return attn_output, None
 
 
@@ -106,46 +154,15 @@ def enable_llama_mixed_attention_training(
     model: LlamaForCausalLM,
     sink_window_size: int,
     recent_window_size: int,
+    adapter_init_value: float = 1.0,
 ):
-    device = next(model.parameters()).device
-    dtype = next(model.parameters()).dtype
-
-    num_tp_heads = model.config.num_attention_heads // int(os.environ["WORLD_SIZE"])
-
-    num_sink_blocks = (sink_window_size + 127) // 128
-    num_recent_blocks = (recent_window_size + 127) // 128
-    logger.info(
-        f"Using blocksparse implementation with {num_sink_blocks} sink blocks, {num_recent_blocks} recent blocks, and {num_tp_heads} heads per device"
+    enable_mixed_attention_training(
+        model,
+        llama_mixed_attention_forward,
+        sink_window_size,
+        recent_window_size,
+        adapter_init_value,
     )
-    streaming_mask = torch.tensor(
-        [num_sink_blocks, num_recent_blocks] * num_tp_heads,
-        device=device,
-        dtype=torch.int32,
-    )
-
-    for layer in model.model.layers:
-        module = layer.self_attn
-        module.forward = types.MethodType(llama_mixed_attention_forward, module)
-        if "adapter" not in module._parameters:
-            # Original
-            module.register_parameter(
-                "adapter",
-                nn.Parameter(
-                    torch.ones(
-                        module.config.num_key_value_heads,
-                        device=device,
-                        dtype=dtype,
-                        requires_grad=True,
-                    )
-                ),
-            )
-        # else: means the adapter is already registered, e.g. middle checkpoint of training
-
-        module.register_buffer("streaming_mask", streaming_mask)
-        module.register_buffer(
-            "head_mask_type",
-            torch.tensor([-1] * num_tp_heads, device=device, dtype=torch.int32),
-        )
 
 
 def phi3_mixed_attention_forward(
@@ -162,7 +179,7 @@ def phi3_mixed_attention_forward(
     past_key_value: Optional[Cache] = None,
     cache_position: Optional[torch.LongTensor] = None,
     **kwargs,
-) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
+) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
     input_shape = hidden_states.shape[:-1]
     hidden_shape = (*input_shape, -1, self.head_dim)
 
@@ -223,12 +240,14 @@ def phi3_mixed_attention_forward(
         is_causal=True,
     )
 
-    adapter = self.adapter.repeat_interleave(self.num_key_value_groups).view(1, -1, 1)
+    # adapter shape: [num_heads] -> [1, num_heads, 1]
+    adapter = self.adapter.repeat_interleave(self.num_key_value_groups)
+    adapter = adapter.view(1, -1, 1)
 
     attn_output = adapter * attn_output + (1.0 - adapter) * streaming_attn_output
     attn_output = attn_output.reshape(*input_shape, -1).contiguous()
-
     attn_output = self.o_proj(attn_output)
+
     return attn_output, None
 
 
@@ -236,90 +255,27 @@ def enable_phi3_mixed_attention_training(
     model: Phi3ForCausalLM,
     sink_window_size: int,
     recent_window_size: int,
+    adapter_init_value: float = 1.0,
 ):
-    device = next(model.parameters()).device
-    dtype = next(model.parameters()).dtype
-
-    num_tp_heads = model.config.num_attention_heads // int(os.environ["WORLD_SIZE"])
-
-    num_sink_blocks = (sink_window_size + 127) // 128
-    num_recent_blocks = (recent_window_size + 127) // 128
-    logger.info(
-        f"Using blocksparse implementation with {num_sink_blocks} sink blocks, {num_recent_blocks} recent blocks, and {num_tp_heads} heads per device"
+    enable_mixed_attention_training(
+        model,
+        phi3_mixed_attention_forward,
+        sink_window_size,
+        recent_window_size,
+        adapter_init_value,
     )
-    streaming_mask = torch.tensor(
-        [num_sink_blocks, num_recent_blocks] * num_tp_heads,
-        device=device,
-        dtype=torch.int32,
-    )
-
-    for layer in model.model.layers:
-        module = layer.self_attn
-        module.forward = types.MethodType(phi3_mixed_attention_forward, module)
-        if "adapter" not in module._parameters:
-            # Original
-            module.register_parameter(
-                "adapter",
-                nn.Parameter(
-                    torch.ones(
-                        module.config.num_key_value_heads,
-                        device=device,
-                        dtype=dtype,
-                        requires_grad=True,
-                    )
-                ),
-            )
-        # else: means the adapter is already registered, e.g. middle checkpoint of training
-
-        module.register_buffer("streaming_mask", streaming_mask)
-        module.register_buffer(
-            "head_mask_type",
-            torch.tensor([-1] * num_tp_heads, device=device, dtype=torch.int32),
-        )
 
 
 def enable_qwen2_mixed_attention_training(
     model: Qwen2ForCausalLM,
     sink_window_size: int,
     recent_window_size: int,
+    adapter_init_value: float = 1.0,
 ):
-    device = next(model.parameters()).device
-    dtype = next(model.parameters()).dtype
-
-    num_tp_heads = model.config.num_attention_heads // int(os.environ["WORLD_SIZE"])
-
-    num_sink_blocks = (sink_window_size + 127) // 128
-    num_recent_blocks = (recent_window_size + 127) // 128
-    logger.info(
-        f"Using blocksparse implementation with {num_sink_blocks} sink blocks, {num_recent_blocks} recent blocks, and {num_tp_heads} heads per device"
+    enable_mixed_attention_training(
+        model,
+        llama_mixed_attention_forward,  # Qwen2 uses the same forward as Llama
+        sink_window_size,
+        recent_window_size,
+        adapter_init_value,
     )
-    streaming_mask = torch.tensor(
-        [num_sink_blocks, num_recent_blocks] * num_tp_heads,
-        device=device,
-        dtype=torch.int32,
-    )
-
-    for layer in model.model.layers:
-        module = layer.self_attn
-        # Qwen2 used Llama attention, so we can reuse the llama_mixed_attention_forward
-        module.forward = types.MethodType(llama_mixed_attention_forward, module)
-        if "adapter" not in module._parameters:
-            # Original
-            module.register_parameter(
-                "adapter",
-                nn.Parameter(
-                    torch.ones(
-                        module.config.num_key_value_heads,
-                        device=device,
-                        dtype=dtype,
-                        requires_grad=True,
-                    )
-                ),
-            )
-        # else: means the adapter is already registered, e.g. middle checkpoint of training
-
-        module.register_buffer("streaming_mask", streaming_mask)
-        module.register_buffer(
-            "head_mask_type",
-            torch.tensor([-1] * num_tp_heads, device=device, dtype=torch.int32),
-        )

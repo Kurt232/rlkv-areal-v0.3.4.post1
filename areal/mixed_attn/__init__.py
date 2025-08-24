@@ -15,24 +15,19 @@ def enable_mixed_attention_training(
     model,
     sink_window_size: int = 128,
     recent_window_size: int = 256,
+    adapter_init_value: float = 1.0,
 ):
     if "llama" in model.config.model_type:
         enable_llama_mixed_attention_training(
-            model,
-            sink_window_size,
-            recent_window_size,
+            model, sink_window_size, recent_window_size, adapter_init_value
         )
     elif "phi3" in model.config.model_type:
         enable_phi3_mixed_attention_training(
-            model,
-            sink_window_size,
-            recent_window_size,
+            model, sink_window_size, recent_window_size, adapter_init_value
         )
     elif "qwen2" in model.config.model_type:
         enable_qwen2_mixed_attention_training(
-            model,
-            sink_window_size,
-            recent_window_size,
+            model, sink_window_size, recent_window_size, adapter_init_value
         )
     else:
         raise ValueError(f"Model type {model.config.model_type} not supported")

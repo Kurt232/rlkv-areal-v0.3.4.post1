@@ -35,8 +35,13 @@ from areal.utils.data import (
     reorder_list,
     unpack_sequence,
 )
+from areal.mixed_attn import (
+    clamp_adapter_weight,
+    get_adapter_weight,
+    load_adapter_weight,
+    save_adapter_weight,
+)
 from areal.mixed_attn.loss import reg_loss_fn
-from areal.mixed_attn.utils import get_adapter_weight
 from areal.utils.distributed import init_custom_process_group
 from areal.utils.fsdp import (
     CPUOffloadPolicy,
@@ -56,14 +61,6 @@ from areal.utils.ulysses import (
     ulysses_pad,
     ulysses_pad_and_slice_inputs,
     ulysses_prepare_inputs,
-)
-
-from areal.mixed_attn import (
-    clamp_adapter_weight,
-    enable_mixed_attention_training,
-    get_adapter_weight,
-    load_adapter_weight,
-    save_adapter_weight,
 )
 
 
@@ -519,6 +516,14 @@ class FSDPEngine(BaseHFEngine):
                 reg_loss = reg_loss_fn(torch.cat(adapter_weight)).float()
 
                 loss += self.config.reg_loss_scale * reg_loss
+
+            loss_scale = loss_weight_fn(mb_input) / total_loss_weight
+
+            # Scale loss for accumulation
+            # Revert gradient averaging across dp ranks
+            loss_scale *= self.world_size
+
+            loss *= loss_scale
 
             loss.backward()
 

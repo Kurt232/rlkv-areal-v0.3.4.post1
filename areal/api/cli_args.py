@@ -548,6 +548,12 @@ class vLLMConfig:
     reg_loss_scale: float = field(
         default=0.3, metadata={"help": "Weight for sparse regularization loss"}
     )
+    adapter_init_value: float = field(
+        default=1.0,
+        metadata={
+            "help": "Initial value for the adapter weights in mixed attention training."
+        },
+    )
 
 
 @dataclass
@@ -621,6 +627,7 @@ class SGLangConfig:
     sink_window_size: int = 16
     recent_window_size: int = 32
     adapter_load_path: Optional[str] = None
+    adapter_init_value: float = 1.0
 
     # Use staticmethod to make OmegaConf happy.
     @staticmethod
