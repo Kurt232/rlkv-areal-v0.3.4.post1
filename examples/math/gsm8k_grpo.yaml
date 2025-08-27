@@ -99,7 +99,7 @@ train_dataset:
   batch_size: 128
   shuffle: true
   pin_memory: true
-  num_workers: 2
+  num_workers: 4
   path: openai/gsm8k
   type: rl
   max_length: 1024
@@ -108,7 +108,7 @@ valid_dataset:
   batch_size: 128
   shuffle: true
   pin_memory: true
-  num_workers: 2
+  num_workers: 4
   path: openai/gsm8k
   type: rl
 
@@ -118,7 +118,7 @@ saver:
   trial_name: ${trial_name}
   fileroot: ${cluster.fileroot}
   freq_epochs: 1
-  freq_steps: null
+  freq_steps: 10
   freq_secs: null
 
 recover:
@@ -127,7 +127,7 @@ recover:
   trial_name: ${trial_name}
   fileroot: ${cluster.fileroot}
   freq_epochs: 1
-  freq_steps: null
+  freq_steps: 10
   freq_secs: 3600
 
 evaluator:
@@ -147,6 +147,6 @@ stats_logger:
 
 launcher:
   inference_server_cpus_per_gpu: 4
-  inference_server_mem_per_gpu: 10240
+  inference_server_mem_per_gpu: 32768
   trainer_cpus_per_gpu: 4
-  trainer_mem_per_gpu: 10240
+  trainer_mem_per_gpu: 32768

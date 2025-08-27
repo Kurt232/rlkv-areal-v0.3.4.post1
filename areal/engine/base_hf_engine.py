@@ -544,16 +544,6 @@ class BaseHFEngine(TrainEngine):
 
             loss *= loss_scale
 
-            # add by Wenjie
-            if self.enable_mixed_attn_training:
-                adapter_weight_list = get_adapter_weight(self.model)
-                adapter_weight = [
-                    h.full_tensor().to(logits.device) for h in adapter_weight_list
-                ]
-                reg_loss = reg_loss_fn(torch.cat(adapter_weight)).float()
-
-                loss += self.config.reg_loss_scale * reg_loss
-
             loss.backward()
 
         grad_norm = torch.nn.utils.clip_grad_norm_(
