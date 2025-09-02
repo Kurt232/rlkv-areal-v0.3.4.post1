@@ -1,11 +1,11 @@
 set -e
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+# export CUDA_VISIBLE_DEVICES=2,3
 
 expr_name=AReaL-GRPO-n4-streaming
 model=deepseek-ai/DeepSeek-R1-Distill-Llama-8B
 trial_name=$1
 lr=$2
-epochs=1
+epochs=4
 reg_loss_scale=$3
 adapter_init_value=$4
 sink_win_size=128
