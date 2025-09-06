@@ -13,6 +13,8 @@ def reg_loss_fn(x: torch.Tensor):
         reg_loss=loss.detach(),
         adapter_weight_mean=x.mean().detach(),
         adapter_weight_std=x.std().detach(),
+        adapter_weight_min=x.min().detach(),
+        adapter_weight_max=x.max().detach(),
     )
 
     return loss
