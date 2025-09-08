@@ -37,8 +37,11 @@ if __name__ == '__main__':
         if model_name is None or adapter_weight is None:
             print(f"Skip {ckpt_dir}: no adapter_weight_dict")
             exit(1)
-        save_path = Path(save_root) / "tmp" / "adapter_weights.tsv"
-        save_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = ckpt_dir.split("/")
+        flag = tmp[-3] + "__step" + tmp[-1].split("globalstep")[-1]
+        model_name = model_name.split("/")[-1]
+        save_path = Path(save_root) / "AReaL-GRPO-n4-streaming" / model_name / flag / "adapter_weights.tsv"
+        save_path.parent.mkdir(parents=True, exist_ok=False)
 
         np.savetxt(save_path, adapter_weight, delimiter="\t")
         print(f"Saved {save_path}")
