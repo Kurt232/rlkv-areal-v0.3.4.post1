@@ -527,11 +527,12 @@ class BaseHFEngine(TrainEngine):
 
             # add by Wenjie
             if self.enable_mixed_attn_training:
+                reward_scores = mb_input["rewards"]
                 adapter_weight_list = get_adapter_weight(self.model)
                 adapter_weight = [
                     h.full_tensor().to(logits.device) for h in adapter_weight_list
                 ]
-                reg_loss = reg_loss_fn(torch.cat(adapter_weight)).float()
+                reg_loss = reg_loss_fn(torch.cat(adapter_weight), reward_scores).float()
 
                 loss += self.config.reg_loss_scale * reg_loss
 

@@ -16,8 +16,8 @@ python3 -m areal.launcher.local examples/lite/gsm8k_grpo.py --config examples/li
     experiment_name="${expr_name}" \
     trial_name="${trial_name}" \
     total_train_epochs="${epochs}" \
-    ++train_dataset.path=Kurt232/Sampled-Laser-Dataset \
-    ++valid_dataset.path=Kurt232/Sampled-Laser-Dataset \
+    ++train_dataset.path=Kurt232/Sampled-Laser-Dataset-V4 \
+    ++valid_dataset.path=Kurt232/Sampled-Laser-Dataset-V4 \
     ++actor.path="${model}" \
     ++actor.optimizer.lr="${lr}" \
     ++actor.enable_mixed_attn_training="true" \
