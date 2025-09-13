@@ -1,8 +1,8 @@
 set -e
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0,1
 
-expr_name=AReaL-GRPO-n4-streaming-phi-1
-model=microsoft/Phi-4-mini-reasoning
+expr_name=AReaL-GRPO-n4-streaming-qwen
+model=deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
 trial_name=$1
 lr=$2
 epochs=2
@@ -10,14 +10,14 @@ reg_loss_scale=$3
 adapter_init_value=$4
 sink_win_size=128
 recent_win_size=256
-trial_name="laser_phi_r_v5__${trial_name}"
+trial_name="laser_qwen_v4_r__${trial_name}"
 
 python3 -m areal.launcher.local examples/lite/gsm8k_grpo.py --config examples/lite/configs/gsm8k_grpo.yaml \
     experiment_name="${expr_name}" \
     trial_name="${trial_name}" \
     total_train_epochs="${epochs}" \
-    ++train_dataset.path=Kurt232/Sampled-Laser-Dataset-Phi-4-mini-reasoning-v5 \
-    ++valid_dataset.path=Kurt232/Sampled-Laser-Dataset-Phi-4-mini-reasoning-v5 \
+    ++train_dataset.path=Kurt232/Sampled-Laser-Dataset-Qwen-2.5-7B-R1 \
+    ++valid_dataset.path=Kurt232/Sampled-Laser-Dataset-Qwen-2.5-7B-R1 \
     ++actor.path="${model}" \
     ++actor.optimizer.lr="${lr}" \
     ++actor.enable_mixed_attn_training="true" \
