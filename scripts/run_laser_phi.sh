@@ -1,7 +1,7 @@
 set -e
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
-expr_name=AReaL-GRPO-n4-streaming-phi-1
+expr_name=AReaL-GRPO-n4-streaming-phi-3
 model=microsoft/Phi-4-mini-reasoning
 trial_name=$1
 lr=$2
@@ -10,14 +10,14 @@ reg_loss_scale=$3
 adapter_init_value=$4
 sink_win_size=128
 recent_win_size=256
-trial_name="laser_phi_r_v5__${trial_name}"
+trial_name="laser_phi_rt_v8__${trial_name}" # truncate reg_loss when reward < 0.5
 
 python3 -m areal.launcher.local examples/lite/gsm8k_grpo.py --config examples/lite/configs/gsm8k_grpo.yaml \
     experiment_name="${expr_name}" \
     trial_name="${trial_name}" \
     total_train_epochs="${epochs}" \
-    ++train_dataset.path=Kurt232/Sampled-Laser-Dataset-Phi-4-mini-reasoning-v5 \
-    ++valid_dataset.path=Kurt232/Sampled-Laser-Dataset-Phi-4-mini-reasoning-v5 \
+    ++train_dataset.path=Kurt232/Sampled-Laser-Dataset-Phi-4-mini-reasoning-v8 \
+    ++valid_dataset.path=Kurt232/Sampled-Laser-Dataset-Phi-4-mini-reasoning-v8 \
     ++actor.path="${model}" \
     ++actor.optimizer.lr="${lr}" \
     ++actor.enable_mixed_attn_training="true" \
