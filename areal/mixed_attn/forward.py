@@ -12,11 +12,8 @@ from transformers.models.llama.modeling_llama import (
     LlamaForCausalLM,
     apply_rotary_pos_emb,
 )
-from transformers.models.phi3.modeling_phi3 import Phi3ForCausalLM
-from transformers.models.phi3.modeling_phi3 import (
-    apply_rotary_pos_emb as phi3_apply_rotary_pos_emb,
-)
 from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
+from transformers.models.qwen3.modeling_qwen3 import Qwen3ForCausalLM
 
 from realhf.base import logging
 
@@ -165,7 +162,22 @@ def enable_llama_mixed_attention_training(
     )
 
 
-def phi3_mixed_attention_forward(
+def enable_qwen2_mixed_attention_training(
+    model: Qwen2ForCausalLM,
+    sink_window_size: int,
+    recent_window_size: int,
+    adapter_init_value: float = 1.0,
+):
+    enable_mixed_attention_training(
+        model,
+        llama_mixed_attention_forward,  # Qwen2 uses the same forward as Llama
+        sink_window_size,
+        recent_window_size,
+        adapter_init_value,
+    )
+
+
+def qwen3_mixed_attention_forward(
     self,
     hidden_states: torch.Tensor,
     position_embeddings: tuple[torch.Tensor, torch.Tensor],
@@ -183,22 +195,12 @@ def phi3_mixed_attention_forward(
     input_shape = hidden_states.shape[:-1]
     hidden_shape = (*input_shape, -1, self.head_dim)
 
-    qkv = self.qkv_proj(hidden_states)
-    query_pos = self.config.num_attention_heads * self.head_dim
-    query_states = qkv[..., :query_pos]
-    key_states = qkv[
-        ..., query_pos : query_pos + self.num_key_value_heads * self.head_dim
-    ]
-    value_states = qkv[..., query_pos + self.num_key_value_heads * self.head_dim :]
-
-    query_states = query_states.view(hidden_shape).transpose(1, 2)
-    key_states = key_states.view(hidden_shape).transpose(1, 2)
-    value_states = value_states.view(hidden_shape).transpose(1, 2)
+    query_states = self.q_norm(self.q_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+    key_states = self.k_norm(self.k_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+    value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
     cos, sin = position_embeddings
-    query_states, key_states = phi3_apply_rotary_pos_emb(
-        query_states, key_states, cos, sin
-    )
+    query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
     if past_key_value is not None:
         # sin and cos are specific to RoPE models; cache_position needed for the static cache
@@ -251,30 +253,15 @@ def phi3_mixed_attention_forward(
     return attn_output, None
 
 
-def enable_phi3_mixed_attention_training(
-    model: Phi3ForCausalLM,
+def enable_qwen3_mixed_attention_training(
+    model: Qwen3ForCausalLM,
     sink_window_size: int,
     recent_window_size: int,
     adapter_init_value: float = 1.0,
 ):
     enable_mixed_attention_training(
         model,
-        phi3_mixed_attention_forward,
-        sink_window_size,
-        recent_window_size,
-        adapter_init_value,
-    )
-
-
-def enable_qwen2_mixed_attention_training(
-    model: Qwen2ForCausalLM,
-    sink_window_size: int,
-    recent_window_size: int,
-    adapter_init_value: float = 1.0,
-):
-    enable_mixed_attention_training(
-        model,
-        llama_mixed_attention_forward,  # Qwen2 uses the same forward as Llama
+        qwen3_mixed_attention_forward,
         sink_window_size,
         recent_window_size,
         adapter_init_value,

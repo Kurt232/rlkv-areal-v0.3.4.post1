@@ -1,7 +1,7 @@
 from .forward import (
     enable_llama_mixed_attention_training,
-    enable_phi3_mixed_attention_training,
     enable_qwen2_mixed_attention_training,
+    enable_qwen3_mixed_attention_training,
 )
 from .utils import (
     clamp_adapter_weight,
@@ -21,12 +21,12 @@ def enable_mixed_attention_training(
         enable_llama_mixed_attention_training(
             model, sink_window_size, recent_window_size, adapter_init_value
         )
-    elif "phi3" in model.config.model_type:
-        enable_phi3_mixed_attention_training(
-            model, sink_window_size, recent_window_size, adapter_init_value
-        )
     elif "qwen2" in model.config.model_type:
         enable_qwen2_mixed_attention_training(
+            model, sink_window_size, recent_window_size, adapter_init_value
+        )
+    elif "qwen3" in model.config.model_type:
+        enable_qwen3_mixed_attention_training(
             model, sink_window_size, recent_window_size, adapter_init_value
         )
     else:

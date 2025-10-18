@@ -3,7 +3,7 @@ import torch
 from realhf.base import stats_tracker
 
 
-def reg_loss_fn(x: torch.Tensor, reward_scores: torch.Tensor, tau: float) -> torch.Tensor:
+def reg_loss_fn(x: torch.Tensor, reward_scores: torch.Tensor, tau: float=0.6) -> torch.Tensor:
     # reward_scores: (batch_size * group_size,)
     # L1 regularization loss
     numel = x.numel()
