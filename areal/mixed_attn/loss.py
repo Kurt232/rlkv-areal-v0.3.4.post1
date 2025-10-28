@@ -1,9 +1,11 @@
 import torch
 
-from realhf.base import stats_tracker
+from areal.utils import stats_tracker
 
 
-def reg_loss_fn(x: torch.Tensor, reward_scores: torch.Tensor, tau: float=0.6) -> torch.Tensor:
+def reg_loss_fn(
+    x: torch.Tensor, reward_scores: torch.Tensor, tau: float = 0.5
+) -> torch.Tensor:
     # reward_scores: (batch_size * group_size,)
     # L1 regularization loss
     numel = x.numel()
@@ -12,7 +14,7 @@ def reg_loss_fn(x: torch.Tensor, reward_scores: torch.Tensor, tau: float=0.6) ->
     reward_mean = reward_scores.mean().detach()
     scaling_factor = (torch.exp(reward_mean) - 1) if reward_mean.item() > tau else 0.0
     loss = l1 / numel * scaling_factor
-    
+
     stats_tracker.scalar(
         reg_loss=loss.detach(),
         reg_scaling_factor=scaling_factor,

@@ -26,6 +26,14 @@ from areal.api.alloc_mode import FSDPParallelStrategy, ParallelStrategy
 from areal.api.cli_args import TrainEngineConfig
 from areal.api.io_struct import FinetuneSpec, ParamSpec, SaveLoadMeta, WeightUpdateMeta
 from areal.engine.base_hf_engine import BaseHFEngine
+from areal.mixed_attn import (
+    clamp_adapter_weight,
+    enable_mixed_attention_training,
+    get_adapter_weight,
+    load_adapter_weight,
+    save_adapter_weight,
+)
+from areal.mixed_attn.loss import reg_loss_fn
 from areal.models.transformers.ulyssess_patch import apply_monkey_patch
 from areal.platforms import current_platform
 from areal.utils import datapack, logging, name_resolve, names, pkg_version
@@ -34,22 +42,6 @@ from areal.utils.data import (
     pad_and_stack_tensors_along_first_dim,
     reorder_list,
     unpack_sequence,
-)
-from areal.mixed_attn import (
-    clamp_adapter_weight,
-    get_adapter_weight,
-    load_adapter_weight,
-    save_adapter_weight,
-)
-from areal.mixed_attn.loss import reg_loss_fn
-from areal.utils.distributed import init_custom_process_group
-from areal.utils.fsdp import (
-    CPUOffloadPolicy,
-    MixedPrecisionPolicy,
-    apply_fsdp2,
-    create_fsdp_device_mesh,
-    fsdp2_clip_grad_norm_,
-    fsdp2_load_full_state_dict,
 )
 from areal.utils.distributed import init_custom_process_group
 from areal.utils.fsdp import fsdp2_load_full_state_dict
@@ -158,20 +150,11 @@ class FSDPEngine(BaseHFEngine):
             ulysses_sp_size=self.parallel_helper.sp_size,
         )
 
-        if self.enable_mixed_attn_training:
-            enable_mixed_attention_training(
-                self.model, self.config.sink_window_size, self.config.recent_window_size
-            )
-
-            for name, param in self.model.named_parameters():
-                if "adapter" in name:
-                    param.requires_grad = True
-                    logger.info(f"Training adapter weight: {name}")
-                else:
-                    param.requires_grad = False
-
         if self.config.use_lora:
             self._apply_peft_wrapper()
+
+        if self.enable_mixed_attn_training:
+            self._apply_mixed_attention_wrapper()
 
         # sharding_strategy = ShardingStrategy.FULL_SHARD
         # Simple auto wrap policy
@@ -317,6 +300,22 @@ class FSDPEngine(BaseHFEngine):
 
         if self.rank == 0:
             self.model.print_trainable_parameters()
+
+    def _apply_mixed_attention_wrapper(self):
+        enable_mixed_attention_training(
+            self.model,
+            self.config.sink_window_size,
+            self.config.recent_window_size,
+            ulysses_sp_size=self.parallel_helper.sp_size,
+        )
+
+        for name, param in self.model.named_parameters():
+            if "adapter" in name:
+                param.requires_grad = True
+                if self.rank == 0:
+                    self.logger.info(f"Training adapter weight: {name}")
+            else:
+                param.requires_grad = False
 
     def upload_weights(self, meta: WeightUpdateMeta):
         if meta.type == current_platform.communication_backend:
@@ -514,7 +513,9 @@ class FSDPEngine(BaseHFEngine):
                 adapter_weight = [
                     h.full_tensor().to(logits.device) for h in adapter_weight_list
                 ]
-                reg_loss = reg_loss_fn(torch.cat(adapter_weight), reward_scores).float()
+                reg_loss = reg_loss_fn(
+                    torch.cat(adapter_weight), reward_scores, self.config.reg_loss_tau
+                ).float()
 
                 loss += self.config.reg_loss_scale * reg_loss
 
@@ -702,6 +703,8 @@ class FSDPEngine(BaseHFEngine):
             else:
                 inputs = padded_mb_input
 
+            # self.logger.warning(f"Forwarding with inputs keys: {list(inputs.keys())}")
+            # ['input_ids', 'loss_mask', 'logprobs', 'versions', 'cu_seqlens', 'max_seqlen', 'position_ids', 'rewards', 'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k', 'use_cache', 'attention_mask']
             outputs = self.model(**inputs)
 
             logits = outputs.logits.squeeze(0)

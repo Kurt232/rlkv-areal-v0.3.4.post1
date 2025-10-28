@@ -8,8 +8,7 @@ def clamp_adapter_weight(model, v_min=0, v_max=1):
         module = layer.self_attn
         if not hasattr(module, "adapter") or module.adapter is None:
             continue
-        with torch.no_grad():
-            module.adapter.clamp_(v_min, v_max)
+        module.adapter.clamp(v_min, v_max)
 
 
 def get_adapter_weight(model):
@@ -19,7 +18,7 @@ def get_adapter_weight(model):
         module = layer.self_attn
         if not hasattr(module, "adapter") or module.adapter is None:
             continue
-        adapter_weight.append(module.adapter)
+        adapter_weight.append(module.adapter.weight)
 
     if len(adapter_weight) != len(model.model.layers):
         raise ValueError(f"Not all layers have adapter weights. ")

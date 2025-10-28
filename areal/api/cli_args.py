@@ -2,7 +2,7 @@ import argparse
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import uvloop
 import yaml
@@ -426,6 +426,33 @@ class PPOActorConfig(TrainEngineConfig):
         metadata={"help": "Maximum number of new tokens to generate"},
     )
 
+    # Mixed Attention
+    # add by Wenjie
+    enable_mixed_attn_training: bool = field(
+        default=False,
+        metadata={"help": "Enable mixed attention training."},
+    )
+    sink_window_size: int = field(
+        default=16,
+        metadata={"help": "Sink size for streaming attention."},
+    )
+    recent_window_size: int = field(
+        default=64,
+        metadata={"help": "Recent size for streaming attention."},
+    )
+    reg_loss_scale: float = field(
+        default=0.3, metadata={"help": "Weight for sparse regularization loss"}
+    )
+    reg_loss_tau: float = field(
+        default=0.5, metadata={"help": "Tau for removing regularization penalty"}
+    )
+    adapter_init_value: float = field(
+        default=1.0,
+        metadata={
+            "help": "Initial value for the adapter weights in mixed attention training."
+        },
+    )
+
 
 @dataclass
 class PPOCriticConfig(TrainEngineConfig):
@@ -531,30 +558,6 @@ class vLLMConfig:
                 flags.append(f"--{k.replace('_','-')} {v}")
         return f"python3 -m areal.thirdparty.vllm.areal_vllm_server {' '.join(flags)}"
 
-    # Mixed Attention
-    # add by Wenjie
-    enable_mixed_attn_training: bool = field(
-        default=False,
-        metadata={"help": "Enable mixed attention training."},
-    )
-    sink_window_size: int = field(
-        default=16,
-        metadata={"help": "Sink size for streaming attention."},
-    )
-    recent_window_size: int = field(
-        default=64,
-        metadata={"help": "Recent size for streaming attention."},
-    )
-    reg_loss_scale: float = field(
-        default=0.3, metadata={"help": "Weight for sparse regularization loss"}
-    )
-    adapter_init_value: float = field(
-        default=1.0,
-        metadata={
-            "help": "Initial value for the adapter weights in mixed attention training."
-        },
-    )
-
 
 @dataclass
 class SGLangConfig:
@@ -604,14 +607,6 @@ class SGLangConfig:
     kv_cache_dtype: str = "auto"
     dp_size: int = 1  # only used for dp attention
     ep_size: int = 1
-    # lora
-    enable_lora: bool | None = None
-    max_lora_rank: int | None = None
-    lora_target_modules: List[str] | None = None
-    lora_paths: List[str] | None = None
-    max_loaded_loras: int = 1
-    max_loras_per_batch: int = 1
-    lora_backend: str = "triton"
     # logging
     log_level: str = "warning"
     log_level_http: str | None = "warning"

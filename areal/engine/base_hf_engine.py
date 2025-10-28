@@ -24,13 +24,6 @@ from areal.api.engine_api import TrainEngine
 from areal.api.io_struct import FinetuneSpec
 from areal.platforms import current_platform
 from areal.utils import logging
-from areal.api.engine_api import FinetuneSpec, TrainEngine
-from areal.mixed_attn import (
-    clamp_adapter_weight,
-    enable_mixed_attention_training,
-    get_adapter_weight,
-)
-from areal.mixed_attn.loss import reg_loss_fn
 from areal.utils.data import (
     MicroBatchList,
     amend_position_ids,
@@ -188,23 +181,6 @@ class BaseHFEngine(TrainEngine):
         self.logger.info(
             f"Model creation and loading time: {time.perf_counter() - tik}"
         )
-
-        # add by Wenjie
-        if self.enable_mixed_attn_training:
-            enable_mixed_attention_training(
-                model,
-                self.config.sink_window_size,
-                self.config.recent_window_size,
-                self.config.adapter_init_value,
-            )
-
-            for name, param in model.named_parameters():
-                if "adapter" in name:
-                    param.requires_grad = True
-                    logger.info(f"Training adapter weight: {name}")
-                else:
-                    param.requires_grad = False
-
         self.model = model
 
     def _create_llm_actor_or_critic(self):
@@ -418,8 +394,14 @@ class BaseHFEngine(TrainEngine):
             ]
             mb["use_cache"] = False
             padded_mb["use_cache"] = False
-            mb["attention_mask"] = None
-            padded_mb["attention_mask"] = None
+            if is_qwen3_moe_model(self.model_config.model_type):
+                mb["attention_mask"] = None
+                padded_mb["attention_mask"] = None
+            else:
+                mb["attention_mask"] = dict(full_attention=None, sliding_attention=None)
+                padded_mb["attention_mask"] = dict(
+                    full_attention=None, sliding_attention=None
+                )
             if "multi_modal_input" in mb:
                 image_grid_thw_list = [
                     item["image_grid_thw"]
@@ -514,27 +496,11 @@ class BaseHFEngine(TrainEngine):
         for pad_length, padded_mb_input, mb_input in zip(
             mb_list.padding_lengths, mb_list.padded_mbs, mb_list.mbs
         ):
-
-            if self.enable_mixed_attn_training:
-                # Reset adapter weights for each microbatch
-                clamp_adapter_weight(self.model, 0, 1)
-
             outputs = self.model(**padded_mb_input)
 
             logits = outputs.logits.squeeze(0)
             logits = logits[:-pad_length] if pad_length > 0 else logits
             loss = loss_fn(logits, mb_input)
-
-            # add by Wenjie
-            if self.enable_mixed_attn_training:
-                reward_scores = mb_input["rewards"]
-                adapter_weight_list = get_adapter_weight(self.model)
-                adapter_weight = [
-                    h.full_tensor().to(logits.device) for h in adapter_weight_list
-                ]
-                reg_loss = reg_loss_fn(torch.cat(adapter_weight), reward_scores).float()
-
-                loss += self.config.reg_loss_scale * reg_loss
 
             loss_scale = loss_weight_fn(mb_input) / total_loss_weight
 
@@ -544,7 +510,6 @@ class BaseHFEngine(TrainEngine):
             loss_scale *= self.world_size
 
             loss *= loss_scale
-
             loss.backward()
 
         grad_norm = torch.nn.utils.clip_grad_norm_(
