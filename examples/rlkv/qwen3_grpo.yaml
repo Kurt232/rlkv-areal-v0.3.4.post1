@@ -8,18 +8,18 @@ async_training: true
 
 cluster:
   n_nodes: 1
-  n_gpus_per_node: 8
-  fileroot: /tmp/areal/experiments
+  n_gpus_per_node: 4
+  fileroot: expr/experiments
   name_resolve:
     type: nfs
-    nfs_record_root: /tmp/areal/name_resolve
+    nfs_record_root: expr/name_resolve
 
-allocation_mode: sglang.d4p1t1+d4p1t1
+allocation_mode: sglang:d1+fsdp:d1
 
 rollout:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  max_concurrent_rollouts: 256
+  max_concurrent_rollouts: 64
   queue_size: null
   consumer_batch_size: ${train_dataset.batch_size}
   max_head_offpolicyness: 2
@@ -28,9 +28,11 @@ rollout:
 gconfig:
   n_samples: 4
   min_new_tokens: 0
-  max_new_tokens: 1024
+  max_new_tokens: 7168
   greedy: false
-  temperature: 1.0
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
 
 actor:
   experiment_name: ${experiment_name}
@@ -41,7 +43,7 @@ actor:
   gradient_checkpointing: false
   dtype: bfloat16
   mb_spec:
-    max_tokens_per_mb: 10240
+    max_tokens_per_mb: 7680
   optimizer:
     type: adam
     lr: 1.70e-5
@@ -58,7 +60,7 @@ actor:
   temperature: ${gconfig.temperature}
   reward_scaling: 10.0
   reward_bias: -0.5
-  kl_ctl: 0.0
+  kl_ctl: 0.0 # disable ref
   ppo_n_minibatches: 1
   recompute_logprob: true
   use_decoupled_loss: true
@@ -81,7 +83,7 @@ ref:
   disable_dropout: true
   dtype: ${actor.dtype}
   mb_spec:
-    max_tokens_per_mb: 10240
+    max_tokens_per_mb: 7680
   optimizer: null
   backend: fsdp
 
@@ -91,13 +93,13 @@ sglang:
   random_seed: ${seed}
   skip_tokenizer_init: true
   dtype: ${actor.dtype}
-  max_running_requests: null
-  context_length: 32768
-  mem_fraction_static: 0.8
+  max_running_requests: 128
+  context_length: 7680
+  mem_fraction_static: 0.7
 
 # datasets
 train_dataset:
-  batch_size: 256
+  batch_size: 4
   shuffle: true
   pin_memory: true
   num_workers: 4
@@ -106,7 +108,7 @@ train_dataset:
   max_length: 1024
 
 valid_dataset:
-  batch_size: 256
+  batch_size: 4
   shuffle: true
   pin_memory: true
   num_workers: 4
@@ -119,7 +121,7 @@ saver:
   trial_name: ${trial_name}
   fileroot: ${cluster.fileroot}
   freq_epochs: 1
-  freq_steps: null
+  freq_steps: 10
   freq_secs: null
 
 recover:
@@ -128,7 +130,7 @@ recover:
   trial_name: ${trial_name}
   fileroot: ${cluster.fileroot}
   freq_epochs: 1
-  freq_steps: null
+  freq_steps: 10
   freq_secs: 3600
 
 evaluator:
