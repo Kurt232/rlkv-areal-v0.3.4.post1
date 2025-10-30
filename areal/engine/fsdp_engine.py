@@ -306,6 +306,7 @@ class FSDPEngine(BaseHFEngine):
             self.model,
             self.config.sink_window_size,
             self.config.recent_window_size,
+            self.config.adapter_init_value,
             ulysses_sp_size=self.parallel_helper.sp_size,
         )
 
@@ -498,13 +499,6 @@ class FSDPEngine(BaseHFEngine):
             else:
                 logits = logits[:-pad_length] if pad_length > 0 else logits
                 loss = loss_fn(logits, mb_input)
-            loss_scale = loss_weight_fn(mb_input) / total_loss_weight
-
-            # Scale loss for accumulation
-            # To reverse the gradient averaging for SP groups
-            loss_scale *= self.parallel_helper.dp_size
-
-            loss *= loss_scale
 
             # add by Wenjie
             if self.enable_mixed_attn_training:
@@ -522,8 +516,8 @@ class FSDPEngine(BaseHFEngine):
             loss_scale = loss_weight_fn(mb_input) / total_loss_weight
 
             # Scale loss for accumulation
-            # Revert gradient averaging across dp ranks
-            loss_scale *= self.world_size
+            # To reverse the gradient averaging for SP groups
+            loss_scale *= self.parallel_helper.dp_size
 
             loss *= loss_scale
 

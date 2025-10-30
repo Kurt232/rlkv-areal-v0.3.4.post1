@@ -66,10 +66,6 @@ actor:
   use_decoupled_loss: true
   behav_imp_weight_cap: 5.0
   dynamic_sampling: false
-  reward_norm:
-    mean_level: group
-    std_level: group
-    group_size: ${gconfig.n_samples}
   adv_norm:
     mean_level: batch
     std_level: batch
@@ -99,20 +95,19 @@ sglang:
 
 # datasets
 train_dataset:
-  batch_size: 4
+  batch_size: 32
   shuffle: true
   pin_memory: true
   num_workers: 4
-  path: openai/gsm8k
+  path: Kurt232/Sampled-Laser-Dataset
   type: rl
-  max_length: 1024
 
 valid_dataset:
-  batch_size: 4
+  batch_size: 32
   shuffle: true
   pin_memory: true
   num_workers: 4
-  path: openai/gsm8k
+  path: Kurt232/Sampled-Laser-Dataset
   type: rl
 
 # Utilities
