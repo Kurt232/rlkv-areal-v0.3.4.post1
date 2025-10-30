@@ -100,8 +100,11 @@ def main(args):
     eval_rollout.initialize()
 
     actor.initialize(None, ft_spec)
+
     ref = None
-    if config.actor.kl_ctl > 0 and config.ref is not None:
+    if (
+        config.actor.kl_ctl > 0 and config.ref is not None
+    ):  # note by Wenjie: disable ref
         ref = FSDPPPOActor(config=config.ref)
         ref.create_process_group(parallel_strategy=parallel_strategy)
         ref.initialize(None, ft_spec)
@@ -114,7 +117,7 @@ def main(args):
         WeightUpdateMeta.from_fsdp_xccl(
             AllocationMode.from_str(config.allocation_mode), actor
         )
-    ]
+    ]  # implement update adapter weight internal function
     dist.broadcast_object_list(weight_update_meta, src=0)
     weight_update_meta = weight_update_meta[0]
 
@@ -127,7 +130,7 @@ def main(args):
         reward_fn=gsm8k_reward_fn,
         gconfig=config.gconfig,
         tokenizer=tokenizer,
-        enable_thinking=False,
+        enable_thinking=False,  # note by Wenjie: for Qwen3-series
         dump_dir=os.path.join(
             StatsLogger.get_log_path(config.stats_logger), "generated"
         ),
