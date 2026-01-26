@@ -397,6 +397,9 @@ class BaseHFEngine(TrainEngine):
             if is_qwen3_moe_model(self.model_config.model_type):
                 mb["attention_mask"] = None
                 padded_mb["attention_mask"] = None
+            elif self.model_config.model_type == "llama":
+                mb["attention_mask"] = None
+                padded_mb["attention_mask"] = None
             else:
                 mb["attention_mask"] = dict(full_attention=None, sliding_attention=None)
                 padded_mb["attention_mask"] = dict(

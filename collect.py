@@ -1,8 +1,9 @@
 import os
 import sys
-import torch
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import torch
 
 
 def extract_weights(ckpt_dir):
@@ -19,7 +20,10 @@ def extract_weights(ckpt_dir):
     for i in range(layers):
         key = f"model.layers.{i}.self_attn.adapter"
         if key not in adapter_weight_dict:
-            raise KeyError(f"{key} missing in {ckpt_dir}")
+            key1 = key + ".weight"
+            if key1 not in adapter_weight_dict:
+                raise KeyError(f"{key} missing in {ckpt_dir}")
+            key = key1
         adapter_weight_list.append(adapter_weight_dict[key])
 
     adapter_weight = torch.stack(adapter_weight_list).cpu().float().numpy()
@@ -27,7 +31,7 @@ def extract_weights(ckpt_dir):
     return model_name, adapter_weight
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     save_root = "./patterns"
     if len(sys.argv) > 1:
         ckpt_dir = sys.argv[1]
@@ -40,7 +44,13 @@ if __name__ == '__main__':
         tmp = ckpt_dir.split("/")
         flag = tmp[-3] + "__step" + tmp[-1].split("globalstep")[-1]
         model_name = model_name.split("/")[-1]
-        save_path = Path(save_root) / "AReaL-GRPO-n4-streaming" / model_name / flag / "adapter_weights.tsv"
+        save_path = (
+            Path(save_root)
+            / "AReaL-GRPO-n4-streaming"
+            / model_name
+            / flag
+            / "adapter_weights.tsv"
+        )
         save_path.parent.mkdir(parents=True, exist_ok=False)
 
         np.savetxt(save_path, adapter_weight, delimiter="\t")
@@ -68,14 +78,20 @@ if __name__ == '__main__':
             continue
 
         latest_ckpt_dir = epoch_dirs[-1]
-        
+
         model_name, adapter_weight = extract_weights(latest_ckpt_dir)
         if model_name is None or adapter_weight is None:
             print(f"Skip {trail_name}: no adapter_weight_dict")
             continue
 
         # 创建输出目录
-        save_path = Path(save_root) / expr_name / model_name / trail_name / "adapter_weights.tsv"
+        save_path = (
+            Path(save_root)
+            / expr_name
+            / model_name
+            / trail_name
+            / "adapter_weights.tsv"
+        )
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
         np.savetxt(save_path, adapter_weight, delimiter="\t")

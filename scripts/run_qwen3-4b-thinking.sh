@@ -1,5 +1,6 @@
 set -e
 export CUDA_VISIBLE_DEVICES=0,1
+# export CUDA_VISIBLE_DEVICES=2,3
 
 expr_name=AReaL-GRPO-n4-streaming-qwen3
 model=Qwen/Qwen3-4B-Thinking-2507
@@ -11,7 +12,7 @@ reg_loss_tau=0.5
 adapter_init_value=1.0
 sink_win_size=128
 recent_win_size=256
-trial_name="qwen3_cfg1_t0.5__lr1e-2_ep2_bs32_reg2.5e-3__5"
+trial_name="qwen3_cfg2_mcr16_t0.5__lr1e-2_ep2_bs32_reg2.5e-3__3"
 
 python3 -m areal.launcher.local examples/math/gsm8k_grpo.py --config examples/rlkv/qwen3_grpo.yaml \
     experiment_name="${expr_name}" \

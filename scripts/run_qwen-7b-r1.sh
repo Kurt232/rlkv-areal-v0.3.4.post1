@@ -1,19 +1,20 @@
 set -e
+# export CUDA_VISIBLE_DEVICES=2,3
 export CUDA_VISIBLE_DEVICES=0,1
 
-expr_name=AReaL-GRPO-n4-streaming-llama
+expr_name=AReaL-GRPO-n4-streaming-qwen
 model=deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
 
 lr=1e-2
 epochs=2
-reg_loss_scale=1e-3
+reg_loss_scale=0.5e-3
 reg_loss_tau=0.55
 adapter_init_value=1.0
 sink_win_size=128
 recent_win_size=256
-trial_name="qwen7b_cfg0_t0.55__lr1e-2_ep2_bs32_reg1e-3"
+trial_name="qwen2_cfg2_mcr16_t0.55__lr1e-2_ep2_bs32_reg0.5e-3"
 
-python3 -m areal.launcher.local examples/lite/gsm8k_grpo.py --config examples/rlkv/deepseek_grpo.yaml \
+python3 -m areal.launcher.local examples/math/gsm8k_grpo.py --config examples/rlkv/qwen3_grpo.yaml \
     experiment_name="${expr_name}" \
     trial_name="${trial_name}" \
     total_train_epochs="${epochs}" \

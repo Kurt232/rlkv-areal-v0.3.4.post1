@@ -11,9 +11,9 @@ reg_loss_tau=0.5
 adapter_init_value=1.0
 sink_win_size=128
 recent_win_size=256
-trial_name="llama_cfg0_t0.5__lr1e-2_ep2_bs32_reg1e-3"
+trial_name="llama_cfg2_mcr16_t0.5__lr1e-2_ep2_bs32_reg1e-3__1"
 
-python3 -m areal.launcher.local examples/lite/gsm8k_grpo.py --config examples/rlkv/deepseek_grpo.yaml \
+python3 -m areal.launcher.local examples/math/gsm8k_grpo.py --config examples/rlkv/qwen3_grpo.yaml \
     experiment_name="${expr_name}" \
     trial_name="${trial_name}" \
     total_train_epochs="${epochs}" \

@@ -13,7 +13,7 @@ cluster:
     type: nfs
     nfs_record_root: expr/name_resolve
 
-allocation_mode: sglang:d1+fsdp:d1
+allocation_mode: sglang:d1t2+fsdp:d1c2
 
 rollout:
   experiment_name: ${experiment_name}
@@ -30,6 +30,7 @@ gconfig:
   max_new_tokens: 7168
   greedy: false
   temperature: 1.0
+  # top_p: 0.95
 
 actor:
   experiment_name: ${experiment_name}
