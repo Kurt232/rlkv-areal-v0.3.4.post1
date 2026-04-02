@@ -1,7 +1,7 @@
 set -e
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=1,3
 
-expr_name=AReaL-GRPO-n4-streaming-llama
+expr_name=AReaL-GRPO-n4-streaming-llama-mmlu-pro
 model=deepseek-ai/DeepSeek-R1-Distill-Llama-8B
 
 lr=1e-2
@@ -11,14 +11,14 @@ reg_loss_tau=0.5
 adapter_init_value=1.0
 sink_win_size=128
 recent_win_size=256
-trial_name="llama_cfg2_mcr16_t0.5__lr1e-2_ep2_bs32_reg1e-3__1"
+trial_name="llama_cfg2_mcr16_t0.5__lr1e-2_ep2_bs32_reg1e-3__3"
 
 python3 -m areal.launcher.local examples/math/gsm8k_grpo.py --config examples/rlkv/qwen3_grpo.yaml \
     experiment_name="${expr_name}" \
     trial_name="${trial_name}" \
     total_train_epochs="${epochs}" \
-    ++train_dataset.path=Kurt232/Sampled-Laser-Dataset-V4 \
-    ++valid_dataset.path=Kurt232/Sampled-Laser-Dataset-V4 \
+    ++train_dataset.path=Kurt232/Sampled-MMLU-Pro-Dataset-V3 \
+    ++valid_dataset.path=Kurt232/Sampled-MMLU-Pro-Dataset-V3 \
     ++actor.path="${model}" \
     ++actor.optimizer.lr="${lr}" \
     ++actor.enable_mixed_attn_training="true" \

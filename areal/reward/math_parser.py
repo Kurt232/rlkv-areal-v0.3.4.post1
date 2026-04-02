@@ -408,7 +408,7 @@ def extract_answer(pred_str, data_name, use_last_number=True):
 
     # choice answer
     if data_name in ["sat_math", "aqua"] or "mmlu" in data_name:
-        tmp = re.findall(r"\b(A|B|C|D|E)\b", pred.upper())
+        tmp = re.findall(r"\b(A|B|C|D|E|F|G|H|I|J)\b", pred.upper())
         if tmp:
             pred = tmp[-1]
         else:
@@ -464,7 +464,7 @@ def is_digit(num):
 def choice_answer_clean(pred: str):
     pred = pred.strip("\n").rstrip(".").rstrip("/").strip(" ").lstrip(":")
     # Clean the answer based on the dataset
-    tmp = re.findall(r"\b(A|B|C|D|E)\b", pred.upper())
+    tmp = re.findall(r"\b(A|B|C|D|E|F|G|H|I|J)\b", pred.upper())
     if tmp:
         pred = tmp
     else:
@@ -510,7 +510,7 @@ def math_equal(
     if str(prediction.strip().lower()) == str(reference.strip().lower()):
         return True
     if (
-        reference in ["A", "B", "C", "D", "E"]
+        reference in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         and choice_answer_clean(prediction) == reference
     ):
         return True
@@ -756,11 +756,11 @@ def symbolic_equal(a, b):
     return False
 
 
-def process_results(answer, solution):
+def process_results(answer, solution, data_name="math"):
 
     try:
-        extracted_answer = extract_answer(answer, "math", use_last_number=False)
-        extracted_solution = extract_answer(solution, "math", use_last_number=True)
+        extracted_answer = extract_answer(answer, data_name, use_last_number=False)
+        extracted_solution = extract_answer(solution, data_name, use_last_number=True)
 
         # if extract_answer.strip() == "":
         #     print (answer)

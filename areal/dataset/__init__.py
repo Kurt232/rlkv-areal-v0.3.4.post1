@@ -116,11 +116,11 @@ def get_custom_dataset(
             max_length=max_length,
             **kwargs,
         )
-    elif "Laser" in path and type == "sft":
+    elif "Kurt232" in path and type == "sft":
         from .laser import get_laser_sft_dataset
 
         return get_laser_sft_dataset(path, split, tokenizer, rank, world_size, **kwargs)
-    elif "Laser" in path and type == "rl":
+    elif "Kurt232" in path and type == "rl":
         from .laser import get_laser_rl_dataset
 
         return get_laser_rl_dataset(path, split, rank, world_size, **kwargs)
